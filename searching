@@ -1,43 +1,43 @@
+from flask import Flask, request, jsonify
 import pymysql
 
-def search_terms_with_like_and_match(keyword, db_config):
-    query = f"""
-    SELECT terms, related_term
-    FROM searching
-    WHERE MATCH(terms, related_term) AGAINST ('{keyword}' IN NATURAL LANGUAGE MODE)
-      OR terms LIKE '%{keyword}%'
-      OR related_term LIKE '%{keyword}%';
-    """
+app = Flask(__name__)
 
-    connection = pymysql.connect(
-        host=db_config['host'],
-        user=db_config['user'],
-        password=db_config['password'],
-        database=db_config['database']
-    )
-
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute(query)
-            results = cursor.fetchall()
-            return results
-    finally:
-        connection.close()
-
-# 測試
+# 資料庫配置
 db_config = {
     'host': 'localhost',
     'user': 'root',
     'password': 'password',
-    'database': 'your_database'
+    'database': 'your_database',
+    'cursorclass': pymysql.cursors.DictCursor
 }
 
-keyword = 'input("請輸入要查詢的關鍵字: ")'
-results = search_terms_with_like_and_match(keyword, db_config)
+# 建立資料庫連線
+def get_connection():
+    return pymysql.connect(**db_config)
 
-# 顯示結果
-for term, related in results:
-    print(f"Terms: {term}, Related: {related}")
+@app.route('/search', methods=['GET'])
+def search():
+    keyword = request.args.get('q', '').strip()  # 獲取用戶的輸入
+    if not keyword:
+        return jsonify([])  # 如果沒有輸入，返回空列表
 
+    query = """
+    SELECT terms, related_term
+    FROM searching
+    WHERE MATCH(terms, related_term) AGAINST (%s IN NATURAL LANGUAGE MODE)
+      OR terms LIKE %s
+      OR related_term LIKE %s
+    LIMIT 10
+    """
+    connection = get_connection()
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(query, (keyword, f"%{keyword}%", f"%{keyword}%"))
+            results = cursor.fetchall()
+            return jsonify(results)
+    finally:
+        connection.close()
 
-
+if __name__ == '__main__':
+    app.run(debug=True)
